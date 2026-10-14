@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课文打字游戏：逛外滩</title>
+    <!-- 引入 pinyin-pro 库自动生成拼音 -->
+    <script src="https://unpkg.com/pinyin-pro"></script>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background-color: #f0f8ff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #game-container {
+            background-color: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            width: 80%;
+            max-width: 900px;
+            padding: 30px;
+            position: relative;
+        }
+        #header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        #progress {
+            font-size: 18px;
+            font-weight: bold;
+            color: #555;
+        }
+        #hearts {
+            font-size: 24px;
+        }
+        .heart {
+            color: red;
+            margin-left: 5px;
+            transition: opacity 0.3s;
+        }
+        .heart.used {
+            opacity: 0.2;
+        }
+        #text-display {
+            min-height: 120px;
+            display: flex;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+            line-height: 2;
+        }
+        .char-box {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0 3px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .pinyin {
+            font-size: 16px;
+            color: #007BFF;
+            height: 22px;
+            visibility: hidden;
+        }
+        .pinyin.show {
+            visibility: visible;
+        }
+        .hanzi {
+            font-size: 32px;
+            color: black;
+            transition: color 0.2s;
+            font-weight: 500;
+        }
+        .hanzi.typed {
+            color: red;
+        }
+        #input-container {
+            text-align: center;
+        }
+        input[type="text"] {
+            width: 90%;
+            font-size: 24px;
+            padding: 10px 15px;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus {
+            border-color: #007BFF;
+        }
+        #next-btn {
+            display: none;
+            margin: 20px auto 0;
+            padding: 10px 30px;
+            font-size: 20px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        #next-btn:hover {
+            background-color: #218838;
+        }
+        #completion-msg {
+            display: none;
+            text-align: center;
+            font-size: 32px;
+            color: #d81b60;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="header">
+        <div id="progress">进度: 1 / 21</div>
+        <div id="hearts">
+            <span class="heart" id="heart-1">❤️</span>
+            <span class="heart" id="heart-2">❤️</span>
+            <span class="heart" id="heart-3">❤️</span>
+        </div>
+    </div>
+    
+    <div id="text-display"></div>
+    
+    <div id="input-container">
+        <input type="text" id="user-input" autocomplete="off" placeholder="请在这里开始打字..." />
+        <button id="next-btn" onclick="nextPage()">下一句</button>
+    </div>
+
+    <div id="completion-msg">🎉 恭喜你，完成了《逛外滩》课文打字练习！</div>
+</div>
+
+<script>
+    const sentences = [
+        "告别了香港，我们来到中国著名的大城市上海。",
+        "早上，伯伯带我去逛外滩。外滩在黄浦江西岸。",
+        "我们沿着江边由南向北走，一路上车水马龙，游人如织。",
+        "外滩全长一千多米。",
+        "它的西侧有52栋古朴的大楼，大多是欧洲风格的老建筑，已有上百年的历史了。",
+        "现在我们看到的这些大楼，大都经过加固，改建，",
+        "风格更加多样，看上去也更加气派、更有活力了。",
+        "外滩对岸是浦东新区，一座座现代化建筑拔地而起。",
+        "最引人注目的是东方明珠电视塔，塔高468米。",
+        "刚建成时，它不但是中国第一高塔，也是亚洲第一高塔。",
+        "虽然现在它的高度已经被广州塔超越，但仍然是上海这个国际化大都市的重要地标。",
+        "伯伯告诉我，一个世纪以前，这里是外国人的租界，江上停满了军舰。",
+        "但新中国成立以后，这里大变样，建设得越来越漂亮了。",
+        "尤其是进入新世纪以来，中国更加开放，",
+        "上海的变化更大、更快，也更美丽了。",
+    ];
+
+    let currentIndex = 0;
+    let heartsLeft = 3;
+    const { pinyin } = pinyinPro;
+
+    // 获取并监听系统语音列表，确保加载中文语音
+    let voices = [];
+    if ('speechSynthesis' in window) {
+        // 部分浏览器（如 Safari）可能会同步加载，部分（如 Chrome）是异步的
+        voices = window.speechSynthesis.getVoices();
+        window.speechSynthesis.onvoiceschanged = () => {
+            voices = window.speechSynthesis.getVoices();
+        };
+    }
+
+    // 播放语音的函数
+    function speakSentence(text) {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel(); 
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'zh-CN'; 
+            utterance.rate = 0.85; // 稍微调慢语速，方便听清
+            
+            // 匹配中文语音包，避免浏览器用英文引擎强行读中文变成乱码音
+            const zhVoice = voices.find(v => v.lang.includes('zh') || v.lang.includes('CN') || v.lang.includes('Chinese'));
+            if (zhVoice) {
+                utterance.voice = zhVoice;
+            }
+
+            window.speechSynthesis.speak(utterance);
+        } else {
+            console.warn("当前浏览器不支持语音播报功能");
+        }
+    }
+
+    function initPage() {
+        if (currentIndex >= sentences.length) {
+            document.getElementById('header').style.display = 'none';
+            document.getElementById('text-display').style.display = 'none';
+            document.getElementById('input-container').style.display = 'none';
+            document.getElementById('completion-msg').style.display = 'block';
+            return;
+        }
+
+        heartsLeft = 3;
+        updateHeartsUI();
+        document.getElementById('progress').innerText = `进度: ${currentIndex + 1} / ${sentences.length}`;
+        
+        const display = document.getElementById('text-display');
+        display.innerHTML = '';
+        
+        const inputField = document.getElementById('user-input');
+        inputField.value = '';
+        inputField.disabled = false;
+        inputField.focus();
+        
+        document.getElementById('next-btn').style.display = 'none';
+
+        const sentence = sentences[currentIndex];
+        
+        // 播放当前句子的读音
+        speakSentence(sentence);
+        
+        for (let i = 0; i < sentence.length; i++) {
+            const char = sentence[i];
+            let py = pinyin(char, { toneType: 'symbol' });
+            
+            const isPunctuation = (py === char || /^[A-Za-z0-9\s]+$/.test(char) || /[，。！？：；‘’“”（）【】《》]/.test(char));
+
+            const charBox = document.createElement('div');
+            charBox.className = 'char-box';
+
+            const pySpan = document.createElement('div');
+            pySpan.className = 'pinyin';
+            pySpan.innerText = isPunctuation ? '' : py;
+
+            const hzSpan = document.createElement('div');
+            hzSpan.className = 'hanzi';
+            hzSpan.innerText = char;
+            hzSpan.id = `char-${i}`;
+
+            charBox.onclick = () => {
+                if (!isPunctuation && !pySpan.classList.contains('show')) {
+                    if (heartsLeft > 0) {
+                        heartsLeft--;
+                        updateHeartsUI();
+                        pySpan.classList.add('show');
+                    } else {
+                        alert("这一页的提示次数用完啦！");
+                    }
+                }
+            };
+
+            charBox.appendChild(pySpan);
+            charBox.appendChild(hzSpan);
+            display.appendChild(charBox);
+        }
+    }
+
+    function updateHeartsUI() {
+        for (let i = 1; i <= 3; i++) {
+            const heart = document.getElementById(`heart-${i}`);
+            if (i <= heartsLeft) {
+                heart.classList.remove('used');
+            } else {
+                heart.classList.add('used');
+            }
+        }
+    }
+
+    document.getElementById('user-input').addEventListener('input', (e) => {
+        const inputVal = e.target.value;
+        const sentence = sentences[currentIndex];
+        let isComplete = false;
+
+        for (let i = 0; i < sentence.length; i++) {
+            const hzSpan = document.getElementById(`char-${i}`);
+            if (i < inputVal.length) {
+                if (inputVal[i] === sentence[i]) {
+                    hzSpan.classList.add('typed');
+                } else {
+                    hzSpan.classList.remove('typed');
+                }
+            } else {
+                hzSpan.classList.remove('typed');
+            }
+        }
+
+        if (inputVal === sentence) {
+            document.getElementById('next-btn').style.display = 'block';
+            document.getElementById('user-input').disabled = true;
+        } else {
+            document.getElementById('next-btn').style.display = 'none';
+        }
+    });
+
+    function nextPage() {
+        currentIndex++;
+        initPage();
+    }
+
+    // 为了确保语音包在页面加载时有足够时间获取，可以在首次点击或按键后再触发第一句，
+    // 或者直接在onload中调用
+    window.onload = initPage;
+</script>
+
+</body>
+</html>
